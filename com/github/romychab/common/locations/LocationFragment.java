@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.Dialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.location.Location;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -22,11 +23,15 @@ import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
 import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.LocationSettingsRequest;
 import com.google.android.gms.location.LocationSettingsResult;
 import com.google.android.gms.location.LocationSettingsStatusCodes;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * Fragment for checking permissions and location service availability.
@@ -60,10 +65,10 @@ import com.google.android.gms.location.LocationSettingsStatusCodes;
  * }</pre>
  */
 public class LocationFragment
-        extends Fragment
-        implements
-            GoogleApiClient.ConnectionCallbacks,
-            GoogleApiClient.OnConnectionFailedListener {
+    extends Fragment
+    implements
+        GoogleApiClient.ConnectionCallbacks,
+        GoogleApiClient.OnConnectionFailedListener {
 
     public static final String TAG = LocationFragment.class.getSimpleName();
 
@@ -94,7 +99,7 @@ public class LocationFragment
 
     private PendingResult<LocationSettingsResult> mSettingsPendingResult;
 
-    private PostCall mPostCall = new PostCall();
+    private Set<ILocationListener> mListeners = new LinkedHashSet<>();
 
     private static LocationFragment newInstance(@Nullable String targetTag) {
         Bundle args = new Bundle();
@@ -104,8 +109,8 @@ public class LocationFragment
         return fragment;
     }
 
-    public static <T extends FragmentActivity & LocationFragment.ICallback> void initLocations(T activity) {
-        initLocations(activity.getSupportFragmentManager());
+    public static <T extends FragmentActivity & LocationFragment.ICallback> LocationFragment initLocations(T activity) {
+        return initLocations(activity.getSupportFragmentManager());
     }
 
     public static void processActivityResults(FragmentActivity activity, int requestCode, int resultCode, Intent data) {
@@ -115,8 +120,8 @@ public class LocationFragment
         }
     }
 
-    private static void initLocations(FragmentManager manager) {
-        Fragment fragment = manager.findFragmentByTag(LocationFragment.TAG);
+    private static LocationFragment initLocations(FragmentManager manager) {
+        LocationFragment fragment = (LocationFragment) manager.findFragmentByTag(LocationFragment.TAG);
         if (null == fragment) {
             fragment = LocationFragment.newInstance(null);
             manager
@@ -124,8 +129,8 @@ public class LocationFragment
                     .add(fragment, LocationFragment.TAG)
                     .commit();
         }
+        return fragment;
     }
-
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -142,32 +147,18 @@ public class LocationFragment
     public void onActivityCreated(@Nullable Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
         mCallback = resolveTarget(getTargetTag());
-        connect();
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        mPostCall.activate();
+        connect();
     }
 
     @Override
     public void onPause() {
         super.onPause();
-        mPostCall.deactivate();
-    }
-
-    @Override
-    public void onDestroyView() {
-        super.onDestroyView();
-        if (null != mSettingsPendingResult && mSettingsPendingResult.isCanceled()) {
-            mSettingsPendingResult.cancel();
-        }
-        if (null != mClient && (mClient.isConnected() || mClient.isConnecting())) {
-            mClient.disconnect();
-        }
-        mClient = null;
-        mSettingsPendingResult = null;
+        disconnect();
     }
 
     @Override
@@ -227,6 +218,26 @@ public class LocationFragment
         }
     }
 
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        mListeners.clear();
+        disconnect();
+    }
+
+    // --- public
+
+    public void addListener(ILocationListener listener) {
+        mListeners.add(listener);
+        connect();
+    }
+
+    public void removeListener(ILocationListener listener) {
+        mListeners.remove(listener);
+        disconnect();
+    }
+
+
     // --- GoogleApiClient.ConnectionCallbacks
 
     @Override
@@ -268,6 +279,37 @@ public class LocationFragment
 
     // --- private
 
+    private void connect() {
+        if (mListeners.size() == 0) {
+            return;
+        }
+
+        if (null == mClient) {
+            mClient = createClient();
+        }
+        if (!mClient.isConnecting() && !mClient.isConnected()) {
+            mClient.connect();
+        }
+    }
+
+    private void disconnect() {
+        if (mListeners.size() != 0) {
+            return;
+        }
+
+        if (null != mSettingsPendingResult && mSettingsPendingResult.isCanceled()) {
+            mSettingsPendingResult.cancel();
+        }
+        if (null != mClient && mClient.isConnected()) {
+            LocationServices.FusedLocationApi.removeLocationUpdates(mClient, mLocationListener);
+        }
+        if (null != mClient && (mClient.isConnected() || mClient.isConnecting())) {
+            mClient.disconnect();
+        }
+        mClient = null;
+        mSettingsPendingResult = null;
+    }
+
     private GoogleApiClient createClient() {
         return new GoogleApiClient.Builder(getContext())
                 .addApi(LocationServices.API)
@@ -278,15 +320,6 @@ public class LocationFragment
 
     private boolean isConnected() {
         return null != mClient && mClient.isConnected();
-    }
-
-    private void connect() {
-        if (null == mClient) {
-            mClient = createClient();
-        }
-        if (!mClient.isConnecting() && !mClient.isConnected()) {
-            mClient.connect();
-        }
     }
 
     private void initLocationService() {
@@ -305,9 +338,11 @@ public class LocationFragment
                 final Status status = result.getStatus();
                 switch (status.getStatusCode()) {
                     case LocationSettingsStatusCodes.SUCCESS:
-                        mClient.disconnect();
+                        if (null != mClient && mClient.isConnected() &&
+                                ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                            LocationServices.FusedLocationApi.requestLocationUpdates(mClient, getLocationRequest(), mLocationListener);
+                        }
                         mCallback.onLocationServicesReady();
-                        removeFragment();
                         break;
                     case LocationSettingsStatusCodes.RESOLUTION_REQUIRED:
                         try {
@@ -409,21 +444,16 @@ public class LocationFragment
 
     private void notifyError(LocationError error) {
         mCallback.onLocationError(error);
-        removeFragment();
     }
 
-    private void removeFragment() {
-        mPostCall.call(new Runnable() {
-            @Override
-            public void run() {
-                getFragmentManager()
-                        .beginTransaction()
-                        .remove(LocationFragment.this)
-                        .commitAllowingStateLoss();
+    private LocationListener mLocationListener = new LocationListener() {
+        @Override
+        public void onLocationChanged(Location location) {
+            for (ILocationListener listener : mListeners) {
+                listener.onGotLocation(location);
             }
-        });
-    }
-
+        }
+    };
 
     public static class ErrorDialogFragment extends DialogFragment {
         public static final String TAG = ErrorDialogFragment.class.getSimpleName();
