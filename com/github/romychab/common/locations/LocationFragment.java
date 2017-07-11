@@ -444,6 +444,9 @@ public class LocationFragment
 
     private void notifyError(LocationError error) {
         mCallback.onLocationError(error);
+        for (ILocationListener listener : mListeners) {
+            listener.onLocationError(error);
+        }
     }
 
     private LocationListener mLocationListener = new LocationListener() {
