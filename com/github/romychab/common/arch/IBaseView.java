@@ -73,10 +73,21 @@ public interface IBaseView extends MvpView {
         UPDATE
     }
 
+    /**
+     * Called when some error occurs in presenter
+     */
     @StateStrategyType(value = OneExecutionStateStrategy.class)
     void onError(Throwable error);
 
+    /**
+     * Called to indicate progress of long-running task to user
+     * @param action what does view has to do with progress (hide, show or update)
+     * @param progressType contains information about progress (now only ID and message are supported)
+     */
     @StateStrategyType(value = OneExecutionStateStrategy.class)
     void setProgress(ProgressAction action, ProgressType progressType);
+
+    @StateStrategyType(value = OneExecutionStateStrategy.class)
+    void hideAllProgresses();
 
 }

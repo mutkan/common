@@ -1,5 +1,6 @@
 package com.github.romychab.common.arch;
 
+import android.os.Bundle;
 import android.widget.Toast;
 
 import com.arellomobile.mvp.MvpAppCompatActivity;
@@ -8,8 +9,11 @@ import com.github.romychab.common.arch.IBaseView.ProgressAction;
 import com.github.romychab.common.arch.IBaseView.ProgressType;
 import com.github.romychab.common.dialogs.ProgressDialogFragment;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 
 public abstract class BaseActivity
     extends MvpAppCompatActivity
@@ -17,87 +21,47 @@ public abstract class BaseActivity
         ProgressDialogFragment.IProgressCallbacks,
         IDefaultProgressDialogHolder {
 
+    private BaseActivityDelegate mDelegate;
 
-    private Set<ProgressDialogFragment.IProgressCallbacks> mProgressCallbacks = new HashSet<>();
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        mDelegate = new BaseActivityDelegate(this, getSupportFragmentManager(), registerPresenters());
+    }
 
     @Override
     public void registerProgressCallback(ProgressDialogFragment.IProgressCallbacks callbacks) {
-        mProgressCallbacks.add(callbacks);
+        mDelegate.registerProgressCallback(callbacks);
     }
 
     @Override
     public void unregisterProgressCallback(ProgressDialogFragment.IProgressCallbacks callbacks) {
-        mProgressCallbacks.remove(callbacks);
+        mDelegate.unregisterProgressCallback(callbacks);
     }
 
     @Override
     protected void onDestroy() {
-        mProgressCallbacks.clear();
+        mDelegate.onDestroy();
         super.onDestroy();
     }
 
     public void onError(Throwable error) {
-        if (error instanceof BaseException) {
-            Toast.makeText(this, ((BaseException) error).getUserReadableMessage(), Toast.LENGTH_SHORT).show();
-        }
-        else {
-            Toast.makeText(this, R.string.err_unknown, Toast.LENGTH_SHORT).show();
-        }
+        mDelegate.onError(error);
     }
 
     public void setProgress(ProgressAction action, ProgressType progressType) {
-        if (progressType.isDefault()) {
-            switch (action) {
-                case SHOW:
-                    showProgressDialog(progressType);
-                    break;
-                case HIDE:
-                    hideProgressDialog();
-                    break;
-                case UPDATE:
-                    updateProgressDialog(progressType);
-                    break;
-            }
-        }
+        mDelegate.setProgress(action, progressType);
     }
 
-    private void updateProgressDialog(ProgressType progressType) {
-        ProgressDialogFragment fragment = (ProgressDialogFragment)
-                getSupportFragmentManager().findFragmentByTag(ProgressDialogFragment.TAG);
-        if (null != fragment) {
-            fragment.updateMessage(null == progressType.getMessage() ? "Application is performing required operations..." : progressType.getMessage());
-        }
+    public void hideAllProgresses() {
+        mDelegate.hideAllProgresses();
     }
 
     @Override
     public void onProgressCancelled(String progressTag) {
-        if (ProgressDialogFragment.TAG.equals(progressTag)) {
-            for (ProgressDialogFragment.IProgressCallbacks callbacks : mProgressCallbacks) {
-                callbacks.onProgressCancelled(progressTag);
-            }
-            cancelPresenterTasks();
-        }
+        mDelegate.onProgressCancelled(progressTag);
     }
 
-    protected abstract void cancelPresenterTasks();
-
-    private void hideProgressDialog() {
-        ProgressDialogFragment fragment = (ProgressDialogFragment)
-            getSupportFragmentManager().findFragmentByTag(ProgressDialogFragment.TAG);
-        if (null != fragment) {
-            fragment.dismiss();
-        }
-    }
-
-    private void showProgressDialog(ProgressType progressType) {
-        ProgressDialogFragment fragment = ProgressDialogFragment.newInstance(
-            new ProgressDialogFragment.Options()
-                .setTitle("Please, wait")
-                .setIndeterminate(true)
-                .setMessage(null == progressType.getMessage() ? "Application is performing required operations..." : progressType.getMessage()),
-            null
-        );
-        fragment.show(getSupportFragmentManager(), ProgressDialogFragment.TAG);
-    }
+    protected abstract BasePresenter[] registerPresenters();
 
 }
