@@ -3,6 +3,7 @@ package com.github.romychab.common.arch;
 import android.widget.Toast;
 
 import com.arellomobile.mvp.MvpAppCompatActivity;
+import com.github.romychab.common.R;
 import com.github.romychab.common.arch.IBaseView.ProgressAction;
 import com.github.romychab.common.arch.IBaseView.ProgressType;
 import com.github.romychab.common.dialogs.ProgressDialogFragment;
@@ -36,7 +37,12 @@ public abstract class BaseActivity
     }
 
     public void onError(Throwable error) {
-        Toast.makeText(this, "Unknown error!", Toast.LENGTH_SHORT).show();
+        if (error instanceof BaseException) {
+            Toast.makeText(this, ((BaseException) error).getUserReadableMessage(), Toast.LENGTH_SHORT).show();
+        }
+        else {
+            Toast.makeText(this, R.string.err_unknown, Toast.LENGTH_SHORT).show();
+        }
     }
 
     public void setProgress(ProgressAction action, ProgressType progressType) {
@@ -77,7 +83,7 @@ public abstract class BaseActivity
 
     private void hideProgressDialog() {
         ProgressDialogFragment fragment = (ProgressDialogFragment)
-                getSupportFragmentManager().findFragmentByTag(ProgressDialogFragment.TAG);
+            getSupportFragmentManager().findFragmentByTag(ProgressDialogFragment.TAG);
         if (null != fragment) {
             fragment.dismiss();
         }
@@ -85,12 +91,11 @@ public abstract class BaseActivity
 
     private void showProgressDialog(ProgressType progressType) {
         ProgressDialogFragment fragment = ProgressDialogFragment.newInstance(
-                new ProgressDialogFragment.Options()
-                        .setTitle("Please, wait")
-                        .setIndeterminate(true)
-                        .setMessage(null == progressType.getMessage() ? "Application is performing required operations..." : progressType.getMessage())
-                ,
-                null
+            new ProgressDialogFragment.Options()
+                .setTitle("Please, wait")
+                .setIndeterminate(true)
+                .setMessage(null == progressType.getMessage() ? "Application is performing required operations..." : progressType.getMessage()),
+            null
         );
         fragment.show(getSupportFragmentManager(), ProgressDialogFragment.TAG);
     }
