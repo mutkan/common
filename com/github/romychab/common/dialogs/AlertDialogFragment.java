@@ -82,10 +82,10 @@ public class AlertDialogFragment
             builder.setPositiveButton(options.mPositiveButton, this);
         }
         if (!TextUtils.isEmpty(options.mNegativeButton)) {
-            builder.setPositiveButton(options.mNegativeButton, this);
+            builder.setNegativeButton(options.mNegativeButton, this);
         }
         if (!TextUtils.isEmpty(options.mNeutralButton)) {
-            builder.setPositiveButton(options.mNeutralButton, this);
+            builder.setNeutralButton(options.mNeutralButton, this);
         }
         return builder.create();
     }
